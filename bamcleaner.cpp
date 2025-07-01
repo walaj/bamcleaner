@@ -42,7 +42,8 @@ int main(int argc, char* argv[]) {
     std::cerr << "Error: could not open BED file '" << bedFile << "'\n";
     return 1;
   }
-  assert(badRegions.ReadBED(bedFile, reader.Header()));
+  if (!badRegions.ReadBED(bedFile, reader.Header()))
+    throw std::runtime_error("unable to read BED file5");
   badRegions.MergeOverlappingIntervals();
   badRegions.CreateTreeMap();
 
@@ -59,6 +60,7 @@ int main(int argc, char* argv[]) {
   writer.SetHeader(reader.Header());
   if (!writer.WriteHeader()) {
     throw std::runtime_error("failed to write bam header");
+
   }
 
   // set the hash table
