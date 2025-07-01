@@ -1,8 +1,4 @@
-####
-## cmake   -DSEQ_LIB_INCLUDE_DIR=$HOME/git/svaba/SeqLib   -DSEQ_LIB_LIBRARY=$HOME/git/svaba/build/SeqLib/libseqlib.a   -DHTSLIB_INCLUDE_DIR=/usr/include   -DHTSLIB_LIBRARY=/usr/lib/x86_64-linux-gnu/libhts.so   ..
-###
-
-
+// cmake   -DSEQ_LIB_INCLUDE_DIR=$HOME/git/svaba/SeqLib   -DSEQ_LIB_LIBRARY=$HOME/git/svaba/build/SeqLib/libseqlib.a   -DHTSLIB_INCLUDE_DIR=/usr/include   -DHTSLIB_LIBRARY=/usr/lib/x86_64-linux-gnu/libhts.so   ..
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -52,17 +48,22 @@ int main(int argc, char* argv[]) {
 
   std::cerr << "...read " << SeqLib::AddCommas(badRegions.size()) <<
     " BED regions" << std::endl;
-  
+
   // Prepare BAM writer with same header and index mode
-  // SeqLib::BamWriter writer;
-  // writer.SetHeader(reader.Header());
-  // if (!writer.Open(outBam, reader.Header())) {
-  //   std::cerr << "Error: could not open output BAM '" << outBam << "'\n";
-  //   return 1;
-  // }
-  
+  SeqLib::BamWriter writer;
+  if (!writer.Open(outBam)) {
+    std::cerr << "Error: could not open output BAM '" << outBam << "'\n";
+    return 1;
+  }
+  // write the BAM header
+  writer.SetHeader(reader.Header());
+  if (!writer.WriteHeader()) {
+    throw std::runtime_error("failed to write bam header");
+  }
+
+  // set the hash table
   tsl::robin_set<std::string> qnameset; 
-  qnameset.reserve(10'000'000);
+  qnameset.reserve(50'000'000);
 
   // First pass: flag reads overlapping bad regions
   size_t i = 0;
@@ -72,10 +73,10 @@ int main(int argc, char* argv[]) {
     SeqLib::GenomicRegion rg = read->AsGenomicRegion();
     if (badRegions.CountOverlaps(rg)) {
       const std::string qname = read->Qname();
-      if (qnameset.find(qname) != qnameset.end()) {
+      if (qnameset.find(qname) == qnameset.end()) {
 	++added;
 	qnameset.insert(qname);
-	if (added % 100'000 == 0)
+	if (added % 250'000 == 0)
 	  std::cerr
 	    << "...added "
 	    << std::right               // ensure right-alignment in the field
@@ -97,17 +98,22 @@ int main(int argc, char* argv[]) {
 	<< std::endl;	  
   }
 
+
+  std::cerr << "-- finished first pass, found " <<
+    SeqLib::AddCommas(added) << " bad read pairs. Cleaning" << std::endl;
+  
   // Reset reader for second pass
-  //reader.Rewind();
-  
+  reader.Reset();
+
   // Second pass: write only reads not in flaggedPairs
-  // while (reader.GetNextAlignment(aln)) {
-  //   if (flaggedPairs.count(aln.QName()) == 0) {
-  //     writer.SaveAlignment(aln);
-  //   }
-  // }
+  while (auto read = reader.Next()) {
+    if (qnameset.count(read->Qname()) == 0) {
+      if (!writer.WriteRecord(*read))
+	throw std::runtime_error("failed to write read");
+    }
+  }
   
-  //writer.Close();
+  writer.Close();
   reader.Close();
   std::cerr << "Finished cleaning BAM.\n";
   return 0;
