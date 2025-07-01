@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
 
   // set the hash table
   tsl::robin_set<std::string> qnameset; 
-  qnameset.reserve(50'000'000);
+  qnameset.reserve(100'000'000);
 
   // First pass: flag reads overlapping bad regions
   size_t i = 0;
@@ -78,7 +78,7 @@ int main(int argc, char* argv[]) {
       if (qnameset.find(qname) == qnameset.end()) {
 	++added;
 	qnameset.insert(qname);
-	if (added % 250'000 == 0)
+	if (added % 1'000'000 == 0)
 	  std::cerr
 	    << "...added "
 	    << std::right               // ensure right-alignment in the field
@@ -108,8 +108,22 @@ int main(int argc, char* argv[]) {
   reader.Reset();
 
   // Second pass: write only reads not in flaggedPairs
-  while (auto read = reader.Next()) {
+  i = 0;
+  while (auto read = reader.Next()) {    
     if (qnameset.count(read->Qname()) == 0) {
+      ++i;
+      if (i % 25'000'000 == 0) {
+	SeqLib::GenomicRegion rg = read->AsGenomicRegion();	
+	std::cerr
+	  << "...wrote "
+	  << std::right               // ensure right-alignment in the field
+	  << std::setw(13)            // width = length of "1,000,000,000"
+	  << SeqLib::AddCommas(i)
+	  << " reads -- " << rg.ChrName(reader.Header())
+	  << ":" << std::left << std::setw(12) << SeqLib::AddCommas((rg.pos1 + 1))
+	  << std::endl;
+      }
+      
       if (!writer.WriteRecord(*read))
 	throw std::runtime_error("failed to write read");
     }
